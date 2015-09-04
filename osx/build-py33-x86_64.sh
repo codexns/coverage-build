@@ -1,0 +1,139 @@
+#!/bin/bash
+
+OPENSSL_VERSION=1.0.2d
+PYTHON_VERSION=3.3.5
+LIBFFI_VERSION=3.2.1
+
+CLEAN_SSL=$1
+
+set -e
+
+# Figure out what directory this script is in
+SCRIPT="$0"
+if [[ $(readlink $SCRIPT) != "" ]]; then
+    SCRIPT=$(dirname $SCRIPT)/$(readlink $SCRIPT)
+fi
+if [[ $0 = ${0%/*} ]]; then
+    SCRIPT=$(pwd)/$0
+fi
+OSX_DIR=$(cd ${SCRIPT%/*} && pwd -P)
+
+DEPS_DIR="${OSX_DIR}/deps"
+BUILD_DIR="${OSX_DIR}/py33-x86_64"
+STAGING_DIR="$BUILD_DIR/staging"
+BIN_DIR="$STAGING_DIR/bin"
+TMP_DIR="$BUILD_DIR/tmp"
+OUT_DIR="$BUILD_DIR/../../out/py33_osx_x64"
+
+export CPPFLAGS="-I${STAGING_DIR}/include -I${STAGING_DIR}/include/openssl -I$(xcrun --show-sdk-path)/usr/include -I${STAGING_DIR}/lib/libffi-${LIBFFI_VERSION}/include/"
+export CFLAGS="-arch x86_64 -mmacosx-version-min=10.7"
+export LDFLAGS="-arch x86_64 -mmacosx-version-min=10.7 -L${STAGING_DIR}/lib"
+
+mkdir -p $DEPS_DIR
+mkdir -p $BUILD_DIR
+mkdir -p $STAGING_DIR
+
+LIBFFI_DIR="${DEPS_DIR}/libffi-$LIBFFI_VERSION"
+LIBFFI_BUILD_DIR="${BUILD_DIR}/libffi-$LIBFFI_VERSION"
+
+OPENSSL_DIR="${DEPS_DIR}/openssl-$OPENSSL_VERSION"
+OPENSSL_BUILD_DIR="${BUILD_DIR}/openssl-$OPENSSL_VERSION"
+
+PYTHON_DIR="${DEPS_DIR}/Python-$PYTHON_VERSION"
+PYTHON_BUILD_DIR="${BUILD_DIR}/Python-$PYTHON_VERSION"
+
+
+if [[ ! -e $OPENSSL_BUILD_DIR ]] || [[ $CLEAN_SSL != "" ]]; then
+    if [[ ! -e $OPENSSL_DIR ]]; then
+        cd $DEPS_DIR
+        curl -O --location "http://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz"
+        tar xvfz openssl-$OPENSSL_VERSION.tar.gz
+        rm openssl-$OPENSSL_VERSION.tar.gz
+        cd $OSX_DIR
+    fi
+
+    if [[ -e $OPENSSL_BUILD_DIR ]]; then
+        rm -R $OPENSSL_BUILD_DIR
+    fi
+    cp -R $OPENSSL_DIR $BUILD_DIR
+
+    cd $OPENSSL_BUILD_DIR
+
+    CC=gcc ./Configure darwin64-x86_64-cc enable-static-engine no-md2 no-rc5 no-ssl2 --prefix=$STAGING_DIR
+    make depend
+    make
+    make install
+
+    cd $OSX_DIR
+fi
+
+
+if [[ ! -e $LIBFFI_DIR ]]; then
+    cd $DEPS_DIR
+    curl -O --location "ftp://sourceware.org/pub/libffi/libffi-$LIBFFI_VERSION.tar.gz"
+    tar xvfz libffi-$LIBFFI_VERSION.tar.gz
+    rm libffi-$LIBFFI_VERSION.tar.gz
+    cd $OSX_DIR
+fi
+
+if [[ -e $LIBFFI_BUILD_DIR ]]; then
+    rm -R $LIBFFI_BUILD_DIR
+fi
+cp -R $LIBFFI_DIR $BUILD_DIR
+
+cd $LIBFFI_BUILD_DIR
+./configure --disable-shared --prefix=${STAGING_DIR} CFLAGS=-fPIC
+make
+make install
+
+cd $OSX_DIR
+
+
+export PKG_CONFIG_PATH="$STAGING_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
+
+
+if [[ ! -e $PYTHON_DIR ]]; then
+    cd $DEPS_DIR
+    curl -O --location "https://www.python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tgz"
+    tar xvfz Python-$PYTHON_VERSION.tgz
+    rm Python-$PYTHON_VERSION.tgz
+    cd ..
+fi
+
+if [[ -e $PYTHON_BUILD_DIR ]]; then
+    rm -R $PYTHON_BUILD_DIR
+fi
+cp -R $PYTHON_DIR $BUILD_DIR
+
+cd $PYTHON_BUILD_DIR
+
+./configure --prefix=$STAGING_DIR
+make
+make install
+
+cd $OSX_DIR
+
+
+cd $DEPS_DIR
+
+if [[ ! -e ./get-pip.py ]]; then
+    curl -O --location "https://bootstrap.pypa.io/get-pip.py"
+fi
+
+$BIN_DIR/python3.3 ./get-pip.py
+if [[ $($BIN_DIR/pip3.3 list | grep coverage) != "" ]]; then
+    $BIN_DIR/pip3.3 uninstall -y coverage
+fi
+
+rm -Rf $TMP_DIR
+$BIN_DIR/pip3.3 install --build $TMP_DIR --no-use-wheel --pre coverage
+
+COVERAGE_VERSION=$($BIN_DIR/pip3.3 show coverage | grep Version | grep -v Metadata-Version | sed 's/Version: //')
+
+rm -Rf $OUT_DIR
+mkdir -p $OUT_DIR
+
+cp -R $STAGING_DIR/lib/python3.3/site-packages/coverage $OUT_DIR/
+
+cd $OUT_DIR
+zip -r ../coverage-${COVERAGE_VERSION}_py33_osx-x64.zip *
