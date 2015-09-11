@@ -3,6 +3,7 @@
 OPENSSL_VERSION=1.0.2d
 PYTHON_VERSION=3.3.5
 LIBFFI_VERSION=3.2.1
+SQLITE3_VERSION=3081101
 
 CLEAN_SSL=$1
 
@@ -43,6 +44,9 @@ LIBFFI_BUILD_DIR="${BUILD_DIR}/libffi-$LIBFFI_VERSION"
 OPENSSL_DIR="${DEPS_DIR}/openssl-$OPENSSL_VERSION"
 OPENSSL_BUILD_DIR="${BUILD_DIR}/openssl-$OPENSSL_VERSION"
 
+SQLITE3_DIR="${DEPS_DIR}/sqlite-amalgamation-$SQLITE3_VERSION"
+SQLITE3_BUILD_DIR="${BUILD_DIR}/sqlite-amalgamation-$SQLITE3_VERSION"
+
 PYTHON_DIR="${DEPS_DIR}/Python-$PYTHON_VERSION"
 PYTHON_BUILD_DIR="${BUILD_DIR}/Python-$PYTHON_VERSION"
 
@@ -63,6 +67,27 @@ download() {
         curl -O "$1"
     fi
 }
+
+if [[ ! -e $SQLITE3_DIR ]]; then
+    cd $DEPS_DIR
+    download "https://www.sqlite.org/2015/sqlite-amalgamation-$SQLITE3_VERSION.zip"
+    unzip sqlite-amalgamation-$SQLITE3_VERSION.zip
+    rm sqlite-amalgamation-$SQLITE3_VERSION.zip
+    cd $LINUX_DIR
+fi
+
+if [[ -e $SQLITE3_BUILD_DIR ]]; then
+    rm -R $SQLITE3_BUILD_DIR
+fi
+cp -R $SQLITE3_DIR $BUILD_DIR
+
+cd $SQLITE3_BUILD_DIR
+
+gcc -fPIC sqlite3.c -c -o sqlite3.o
+gcc -fPIC shell.c -c -o shell.o
+ar rcs sqlite3.a sqlite3.o shell.o
+
+cd $LINUX_DIR
 
 if [[ ! -e $OPENSSL_DIR ]]; then
     cd $DEPS_DIR
@@ -127,9 +152,45 @@ cp -R $PYTHON_DIR $BUILD_DIR
 
 cd $PYTHON_BUILD_DIR
 
+echo "*shared*
+_sqlite3 _sqlite/module.c _sqlite/cache.c _sqlite/connection.c _sqlite/cursor.c _sqlite/microprotocols.c _sqlite/prepare_protocol.c _sqlite/row.c _sqlite/statement.c _sqlite/util.c -I$SQLITE3_BUILD_DIR -I$PYTHON_BUILD_DIR -I$PYTHON_BUILD_DIR/Include -I$PYTHON_BUILD_DIR/Modules/_sqlite $SQLITE3_BUILD_DIR/sqlite3.a
+" > Modules/Setup.local
+
+patch -p1 <<EOF
+--- a/Modules/_sqlite/module.c  2014-01-21 22:00:03.000000000 -0500
++++ b/Modules/_sqlite/module.c  2014-01-21 22:00:21.000000000 -0500
+@@ -28,6 +28,9 @@
+ #include "prepare_protocol.h"
+ #include "microprotocols.h"
+ #include "row.h"
++#ifndef MODULE_NAME
++#define MODULE_NAME "_sqlite3"
++#endif
+ 
+ #if SQLITE_VERSION_NUMBER >= 3003003
+ #define HAVE_SHARED_CACHE
+EOF
+patch -p1 <<EOF
+--- a/Modules/_sqlite/sqlitecompat.h    2014-01-21 22:00:34.000000000 -0500
++++ b/Modules/_sqlite/sqlitecompat.h    2014-01-21 22:00:54.000000000 -0500
+@@ -26,6 +26,10 @@
+ #ifndef PYSQLITE_COMPAT_H
+ #define PYSQLITE_COMPAT_H
+ 
++#ifndef MODULE_NAME
++#define MODULE_NAME "_sqlite3"
++#endif
++
+ /* define Py_ssize_t for pre-2.5 versions of Python */
+ 
+ #if PY_VERSION_HEX < 0x02050000
+EOF
+patch -p1 < $LINUX_DIR/makesetup.diff
+
 ./configure --prefix=$STAGING_DIR
 make
 make install
+mv $STAGING_DIR/lib/python3.3/lib-dynload/_sqlite3module.so $STAGING_DIR/lib/python3.3/lib-dynload/_sqlite3.cpython-33m.so
 
 cd $LINUX_DIR
 
