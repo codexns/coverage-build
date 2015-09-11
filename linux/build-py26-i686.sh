@@ -70,7 +70,7 @@ download() {
 
 if [[ ! -e $SQLITE3_DIR ]]; then
     cd $DEPS_DIR
-    download "https://www.sqlite.org/2015/sqlite-amalgamation-$SQLITE3_VERSION.zip"
+    download "https://sqlite.org/2015/sqlite-amalgamation-$SQLITE3_VERSION.zip"
     unzip sqlite-amalgamation-$SQLITE3_VERSION.zip
     rm sqlite-amalgamation-$SQLITE3_VERSION.zip
     cd $LINUX_DIR
