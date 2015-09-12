@@ -190,7 +190,7 @@ patch -p1 < $LINUX_DIR/makesetup.diff
 ./configure --prefix=$STAGING_DIR
 make
 make install
-mv $STAGING_DIR/lib/python3.3/lib-dynload/_sqlite3module.so $STAGING_DIR/lib/python3.3/lib-dynload/_sqlite3.cpython-33m.so
+mv -f $STAGING_DIR/lib/python3.3/lib-dynload/_sqlite3module.so $STAGING_DIR/lib/python3.3/lib-dynload/_sqlite3.cpython-33m.so
 
 cd $LINUX_DIR
 

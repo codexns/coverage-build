@@ -218,7 +218,7 @@ patch -p1 < $LINUX_DIR/makesetup.diff
 ./configure --prefix=$STAGING_DIR --enable-unicode=ucs4
 make
 make install
-mv $STAGING_DIR/lib/python2.6/lib-dynload/_sqlite3module.so $STAGING_DIR/lib/python2.6/lib-dynload/_sqlite3.so
+mv -f $STAGING_DIR/lib/python2.6/lib-dynload/_sqlite3module.so $STAGING_DIR/lib/python2.6/lib-dynload/_sqlite3.so
 
 cd $LINUX_DIR
 
